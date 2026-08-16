@@ -66,6 +66,7 @@ FastAPI и, соответственно, `frontend-worktree/`, от котор�
 | `tg_client.py` | инициализация Telethon-клиента через StringSession | FR-01/02 |
 | `session_vault.py` | хранение Telegram-сессии в macOS Keychain | FR-03/04 |
 | `device_fingerprint.py` | metadata клиента Telegram Desktop/macOS для MTProto initConnection | S2-05 |
+| `plan_validation.py` | предвалидация лимитов Telegram-папок до apply | FR-19 |
 | `collector.py` | сбор метаданных диалогов, без чтения содержимого | FR-05 |
 | `classifier.py` | rule-based классификация по ключевым словам + типу/возрасту | FR-08/09 |
 | `categories.json` | настраиваемые правила категорий | FR-09 |
@@ -81,11 +82,10 @@ FastAPI и, соответственно, `frontend-worktree/`, от котор�
 - Классифицирует rule-based: по ключевым словам в названии + по типу и
   «возрасту» диалога (`DEAD_AFTER_DAYS` в `.env`, по умолчанию 180 дней).
 - Строит план и печатает таблицу через `rich`.
-- Применяет план: архивация, мьют, создание/обновление папок (учтено, что
-  Premium удваивает лимит папок — 10 → 20, и чатов в папке — 100 → 200,
-  но сам инструмент этот лимит не проверяет, Telegram сам вернёт ошибку
-  при превышении — предвалидация лимитов запланирована как `docs/TASKS.md`
-  S2-04).
+- Применяет план: архивация, мьют, создание/обновление папок. Перед любым
+  `apply` план валидируется против лимитов Telegram-папок: 10 папок / 100
+  чатов без Premium, 20 / 200 с `TG_HAS_PREMIUM=true`. Если план не
+  помещается, CLI останавливается до подключения к Telegram.
 - Для archive/unarchive/mute `data/undo_log.jsonl` пишется как
   write-ahead append-only журнал: сначала snapshot состояния «до», затем
   Telegram API, затем событие `applied`/`failed`. Команда `undo` читает

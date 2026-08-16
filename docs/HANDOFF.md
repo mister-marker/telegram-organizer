@@ -24,6 +24,29 @@
 
 ---
 
+## [16.08.2026, S2-04 plan validation] От: Codex → Кому: CEO, Aider
+
+**Этап/задача:** S2-04 (Предвалидация лимитов папок до apply)
+
+**Что сделано:**
+- Создана ветка `stage/plan-validation`.
+- Добавлен `plan_validation.py`: чистая fail-fast проверка `plan.json` до создания Telethon-клиента.
+- Проверяются лимиты Telegram-папок: free 10 папок / 100 чатов, Premium 20 / 200 через `TG_HAS_PREMIUM=true`.
+- `main.py cmd_apply` вызывает `validate_plan_limits()` сразу после чтения `plan.json`; при ошибке печатает понятное сообщение и не вызывает `build_client()`.
+- Категории с `"неактивные"` не считаются Telegram-папками, потому что идут в archive/mute pipeline.
+- Добавлены unit-тесты `tests/test_plan_validation.py`, включая проверку, что невалидный план не строит Telegram client.
+
+**Что важно знать перед продолжением:**
+- Premium пока задаётся локальным `.env` флагом, без runtime-запроса к Telegram. Это осознанно: S2-04 можно проверять без тестового аккаунта.
+- Валидация не меняет `plan.json`, только останавливает apply и объясняет, что поправить.
+- S2-06 теперь покрывает S2-02/S2-03/S2-04/S2-05; отдельного покрытия всё ещё ждут rate limiter и security-CI.
+
+**Файлы затронуты:**
+- `plan_validation.py`, `config.py`, `main.py`, `tests/test_plan_validation.py`, `.env.example`, `README.md`, `docs/TASKS.md`, `docs/HANDOFF.md`
+
+**Открытые вопросы / решения нужны от CEO:**
+- Позже решить, нужен ли runtime auto-detect Premium через Telegram API, или локального `TG_HAS_PREMIUM` достаточно для CLI-этапа.
+
 ## [16.08.2026, S2-05 device fingerprint] От: Codex → Кому: CEO, Aider
 
 **Этап/задача:** S2-05 (Device fingerprint при авторизации)
