@@ -23,6 +23,7 @@ from classifier import classify
 from report import build_plan, print_report
 import actions
 import undo
+from plan_validation import PlanValidationError, is_archive_category, validate_plan_limits
 from session_vault import delete_session
 
 DIALOGS_PATH = os.path.join("data", "dialogs.json")
@@ -55,6 +56,13 @@ async def cmd_report(args):
 async def cmd_apply(args):
     settings = load_settings()
     plan = load_json(PLAN_PATH)
+
+    try:
+        validate_plan_limits(plan, has_premium=settings.has_premium)
+    except PlanValidationError as e:
+        print(e)
+        return
+
     warn_legacy_session_file(settings)
     client = build_client(settings)
 
@@ -66,7 +74,7 @@ async def cmd_apply(args):
         await ensure_started(client, settings)
         for category, dialogs in plan.items():
             print(f"\n--- {category} ({len(dialogs)}) ---")
-            if "неактивные" in category.lower():
+            if is_archive_category(category):
                 await actions.archive_dialogs(client, dialogs, dry_run=dry_run)
                 await actions.mute_dialogs(client, dialogs, dry_run=dry_run)
                 if args.confirm_leave:

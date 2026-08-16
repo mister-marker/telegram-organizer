@@ -36,6 +36,7 @@ class Settings:
     app_version: str = "5.16.4"
     lang_code: str = "en"
     system_lang_code: str = "en"
+    has_premium: bool = False
 
 
 def load_settings() -> Settings:
@@ -49,9 +50,17 @@ def load_settings() -> Settings:
         app_version=os.getenv("TG_APP_VERSION", "5.16.4"),
         lang_code=os.getenv("TG_LANG_CODE", "en"),
         system_lang_code=os.getenv("TG_SYSTEM_LANG_CODE", "en"),
+        has_premium=_bool_env("TG_HAS_PREMIUM", default=False),
     )
 
 
 def _optional(name: str) -> str | None:
     value = os.getenv(name)
     return value.strip() if value and value.strip() else None
+
+
+def _bool_env(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
