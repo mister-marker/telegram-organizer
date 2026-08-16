@@ -26,6 +26,7 @@ macOS Keychain, держит её в памяти во время работы, 
 """
 from telethon import TelegramClient
 from config import Settings
+from device_fingerprint import build_device_fingerprint
 from session_vault import load_string_session, save_client_session
 
 
@@ -41,8 +42,20 @@ def build_client(settings: Settings) -> TelegramClient:
     именем файла, а объектом сессии. Когда мы передаём StringSession, Telethon
     не создаёт `tg_organizer.session` рядом с кодом; он работает с сессией в
     памяти, а постоянное хранение полностью контролирует session_vault.py.
+
+    Device fingerprint передаётся как metadata MTProto initConnection. Эти
+    поля показывают Telegram, с какого класса устройства и приложения пришло
+    подключение. Мы держим их рядом с созданием клиента, потому что после
+    авторизации менять этот отпечаток на лету уже поздно: он участвует именно
+    в установке MTProto-соединения.
     """
-    return TelegramClient(load_string_session(settings), settings.api_id, settings.api_hash)
+    fingerprint = build_device_fingerprint(settings)
+    return TelegramClient(
+        load_string_session(settings),
+        settings.api_id,
+        settings.api_hash,
+        **fingerprint.as_telethon_kwargs(),
+    )
 
 
 async def ensure_started(client: TelegramClient, settings: Settings) -> None:
