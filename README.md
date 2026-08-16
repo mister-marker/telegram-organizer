@@ -65,6 +65,7 @@ FastAPI и, соответственно, `frontend-worktree/`, от котор�
 | `main.py` | точка входа CLI (`collect`/`report`/`apply`) | — |
 | `tg_client.py` | инициализация Telethon-клиента через StringSession | FR-01/02 |
 | `session_vault.py` | хранение Telegram-сессии в macOS Keychain | FR-03/04 |
+| `device_fingerprint.py` | metadata клиента Telegram Desktop/macOS для MTProto initConnection | S2-05 |
 | `collector.py` | сбор метаданных диалогов, без чтения содержимого | FR-05 |
 | `classifier.py` | rule-based классификация по ключевым словам + типу/возрасту | FR-08/09 |
 | `categories.json` | настраиваемые правила категорий | FR-09 |
@@ -104,6 +105,10 @@ FastAPI и, соответственно, `frontend-worktree/`, от котор�
   это ровно паттерн double-flag confirmation, описанный в
   `docs/SECURITY.md` §5, для будущих опасных действий использовать как
   референс.
+- Telethon-клиент подключается с macOS/Desktop device fingerprint:
+  модель Mac и версия macOS определяются локально, `app_version` и языки
+  можно переопределить через `.env`. Это metadata MTProto initConnection,
+  а не способ обхода rate limiting или правил Telegram.
 
 ## Что осознанно НЕ сделано в v1
 

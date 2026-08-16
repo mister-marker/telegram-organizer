@@ -24,6 +24,28 @@
 
 ---
 
+## [16.08.2026, S2-05 device fingerprint] От: Codex → Кому: CEO, Aider
+
+**Этап/задача:** S2-05 (Device fingerprint при авторизации)
+
+**Что сделано:**
+- Создана ветка `stage/device-fingerprint`.
+- Добавлен `device_fingerprint.py`: сбор MTProto initConnection metadata (`device_model`, `system_version`, `app_version`, `lang_code`, `system_lang_code`).
+- `tg_client.py` передаёт fingerprint в `TelegramClient` keyword-параметрами, сохраняя `StringSession` + Keychain как session storage.
+- `config.py` и `.env.example` получили override-поля: `TG_DEVICE_MODEL`, `TG_SYSTEM_VERSION`, `TG_APP_VERSION`, `TG_LANG_CODE`, `TG_SYSTEM_LANG_CODE`.
+- Добавлены unit-тесты `tests/test_device_fingerprint.py`: проверка sysctl/platform fallback, env overrides и фактической передачи kwargs в fake `TelegramClient`.
+
+**Что важно знать перед продолжением:**
+- Fingerprint — это metadata подключения, а не гарантия против ограничений Telegram. Rate limiter, dry-run и песочный аккаунт остаются обязательными.
+- `TG_APP_VERSION` задан правдоподобным дефолтом и может быть обновлён через `.env` без правки кода.
+- Ручная проверка будет видна в Telegram Devices/Active Sessions после первого входа песочным аккаунтом.
+
+**Файлы затронуты:**
+- `device_fingerprint.py`, `tg_client.py`, `config.py`, `.env.example`, `tests/test_device_fingerprint.py`, `README.md`, `docs/TASKS.md`, `docs/HANDOFF.md`
+
+**Открытые вопросы / решения нужны от CEO:**
+- После ручного теста на песочном аккаунте подтвердить, как fingerprint отображается в Telegram active sessions.
+
 ## [16.08.2026, S2-02 session vault] От: Codex → Кому: CEO, Aider
 
 **Этап/задача:** S2-02 (Session Vault: macOS Keychain вместо `.session` файла)
