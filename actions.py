@@ -18,22 +18,53 @@ import inspect
 import json
 import os
 import time
+import uuid
 from telethon import TelegramClient, functions, types
 from ratelimit import with_flood_control
 
 UNDO_LOG_PATH = os.path.join("data", "undo_log.jsonl")
 
 
-def _log_action(action: str, dialog: dict, before: dict) -> None:
+def _append_undo_event(event: dict) -> None:
+    """
+    Append-only запись в undo_log.
+
+    Это намеренно синхронная запись на диск: перед мутирующим Telegram API
+    нам важно не "когда-нибудь" сбросить буфер, а гарантировать, что snapshot
+    уже лежит в файле. Поэтому после write() вызываем flush() и os.fsync().
+    """
     os.makedirs(os.path.dirname(UNDO_LOG_PATH), exist_ok=True)
     with open(UNDO_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "ts": time.time(),
-            "action": action,
-            "dialog_id": dialog["id"],
-            "name": dialog["name"],
-            "before": before,
-        }, ensure_ascii=False) + "\n")
+        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def _write_ahead_snapshot(action: str, dialog: dict, before: dict) -> str:
+    """
+    Write-ahead snapshot: сначала логируем состояние ДО изменения, и только
+    потом вызывающий код имеет право сделать Telegram API mutation.
+    """
+    undo_id = str(uuid.uuid4())
+    _append_undo_event({
+        "undo_id": undo_id,
+        "event": "snapshot",
+        "ts": time.time(),
+        "action": action,
+        "dialog_id": dialog["id"],
+        "name": dialog["name"],
+        "before": before,
+    })
+    return undo_id
+
+
+def _mark_undo_event(undo_id: str, event: str, **extra) -> None:
+    _append_undo_event({
+        "undo_id": undo_id,
+        "event": event,
+        "ts": time.time(),
+        **extra,
+    })
 
 
 async def archive_dialogs(client: TelegramClient, dialogs: list[dict], dry_run: bool = True) -> None:
@@ -44,8 +75,13 @@ async def archive_dialogs(client: TelegramClient, dialogs: list[dict], dry_run: 
             print(f"[dry-run] Архивировать: {d['name']}")
             continue
         entity = await client.get_entity(d["id"])
-        await with_flood_control(lambda e=entity: client.edit_folder(e, 1))
-        _log_action("archive", d, before={"archived": False})
+        undo_id = _write_ahead_snapshot("archive", d, before={"archived": False})
+        try:
+            await with_flood_control(lambda e=entity: client.edit_folder(e, 1))
+        except Exception as e:
+            _mark_undo_event(undo_id, "failed", error_type=type(e).__name__)
+            raise
+        _mark_undo_event(undo_id, "applied")
         print(f"[done] Заархивирован: {d['name']}")
 
 
@@ -57,8 +93,13 @@ async def unarchive_dialogs(client: TelegramClient, dialogs: list[dict], dry_run
             print(f"[dry-run] Разархивировать: {d['name']}")
             continue
         entity = await client.get_entity(d["id"])
-        await with_flood_control(lambda e=entity: client.edit_folder(e, 0))
-        _log_action("unarchive", d, before={"archived": True})
+        undo_id = _write_ahead_snapshot("unarchive", d, before={"archived": True})
+        try:
+            await with_flood_control(lambda e=entity: client.edit_folder(e, 0))
+        except Exception as e:
+            _mark_undo_event(undo_id, "failed", error_type=type(e).__name__)
+            raise
+        _mark_undo_event(undo_id, "applied")
         print(f"[done] Разархивирован: {d['name']}")
 
 
@@ -76,10 +117,15 @@ async def mute_dialogs(client: TelegramClient, dialogs: list[dict], dry_run: boo
         mute_until = 2 ** 31 - 1 if forever else 0
         peer = types.InputNotifyPeer(peer=input_entity)
         settings = types.InputPeerNotifySettings(mute_until=mute_until)
-        await with_flood_control(lambda p=peer, s=settings: client(
-            functions.account.UpdateNotifySettingsRequest(peer=p, settings=s)
-        ))
-        _log_action("mute", d, before={"muted": False})
+        undo_id = _write_ahead_snapshot("mute", d, before={"muted": False})
+        try:
+            await with_flood_control(lambda p=peer, s=settings: client(
+                functions.account.UpdateNotifySettingsRequest(peer=p, settings=s)
+            ))
+        except Exception as e:
+            _mark_undo_event(undo_id, "failed", error_type=type(e).__name__)
+            raise
+        _mark_undo_event(undo_id, "applied")
         print(f"[done] Заглушен: {d['name']}")
 
 
@@ -147,7 +193,7 @@ async def leave_dialogs(client: TelegramClient, dialogs: list[dict],
     удаляет локальную историю переписки в этом чате. Поэтому:
       - работает ТОЛЬКО для групп и каналов (никогда для личных чатов);
       - требует dry_run=False И confirmed=True одновременно;
-      - действие логируется в undo_log.jsonl только после успешного выполнения.
+      - действие получает write-ahead snapshot до вызова Telegram API.
     """
     targets = [d for d in dialogs if d["kind"] in ("group", "channel")]
     for d in targets:
@@ -155,6 +201,11 @@ async def leave_dialogs(client: TelegramClient, dialogs: list[dict],
             print(f"[dry-run] Выйти из: {d['name']} (нужен флаг --confirm-leave)")
             continue
         entity = await client.get_entity(d["id"])
-        await with_flood_control(lambda e=entity: client.delete_dialog(e))
-        _log_action("leave", d, before={"member": True})
+        undo_id = _write_ahead_snapshot("leave", d, before={"member": True})
+        try:
+            await with_flood_control(lambda e=entity: client.delete_dialog(e))
+        except Exception as e:
+            _mark_undo_event(undo_id, "failed", error_type=type(e).__name__)
+            raise
+        _mark_undo_event(undo_id, "applied", reversible=False)
         print(f"[done] Покинут: {d['name']}")

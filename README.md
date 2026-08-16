@@ -39,6 +39,8 @@ python main.py collect          # первый запуск спросит но�
 python main.py report           # покажет таблицу и сохранит data/plan.json
 python main.py apply            # ПРЕДПРОСМОТР — ничего не меняет
 python main.py apply --yes      # реально архивирует / мьютит / создаёт папки
+python main.py undo             # ПРЕДПРОСМОТР отката последнего archive/mute
+python main.py undo --yes       # реально откатить последнее archive/mute
 ```
 
 Перед `--yes` откройте `data/plan.json` и при желании поправьте вручную —
@@ -81,9 +83,12 @@ FastAPI и, соответственно, `frontend-worktree/`, от котор�
   но сам инструмент этот лимит не проверяет, Telegram сам вернёт ошибку
   при превышении — предвалидация лимитов запланирована как `docs/TASKS.md`
   S2-04).
-- Каждое реальное действие пишется в `data/undo_log.jsonl` с состоянием
-  «до» — для ручного отката (автоматическая команда `undo`, которая сама
-  читает этот лог — `docs/TASKS.md` S2-03).
+- Для archive/unarchive/mute `data/undo_log.jsonl` пишется как
+  write-ahead append-only журнал: сначала snapshot состояния «до», затем
+  Telegram API, затем событие `applied`/`failed`. Команда `undo` читает
+  этот лог и автоматически откатывает archive/mute (`docs/TASKS.md`
+  S2-03). Откат папок требует полного snapshot `DialogFilter` и будет
+  расширен отдельно.
 - Защита от FloodWait в два слоя (см. `ratelimit.py`): (1) фиксированная
   проактивная пауза между запросами (`PACE_SECONDS = 1.0`) — снижает
   вероятность вообще упереться в лимит; (2) реактивная обработка

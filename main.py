@@ -8,6 +8,8 @@ CLI-точка входа.
   python main.py apply --yes --confirm-leave  — дополнительно разрешить выход из
                                                  отмеченных мёртвых групп/каналов
                                                  (необратимо, см. README)
+  python main.py undo                         — предпросмотр отката последнего действия
+  python main.py undo --yes                   — реально откатить последнее действие
 """
 import argparse
 import asyncio
@@ -19,6 +21,7 @@ from collector import collect_dialogs, save_json, load_json
 from classifier import classify
 from report import build_plan, print_report
 import actions
+import undo
 
 DIALOGS_PATH = os.path.join("data", "dialogs.json")
 PLAN_PATH = os.path.join("data", "plan.json")
@@ -71,6 +74,26 @@ async def cmd_apply(args):
         print("\nЭто был предпросмотр. Добавьте --yes, чтобы применить по-настоящему.")
 
 
+async def cmd_undo(args):
+    records = undo.find_undo_candidates(last=args.last)
+
+    dry_run = not args.yes
+    if dry_run:
+        undo.print_undo_preview(records)
+        print("\nЭто был предпросмотр. Добавьте --yes, чтобы откатить по-настоящему.")
+        return
+
+    if not records:
+        print("[undo] Нет действий archive/mute для отката.")
+        return
+
+    settings = load_settings()
+    client = build_client(settings)
+    async with client:
+        await ensure_started(client)
+        await undo.undo_records(client, records, dry_run=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Организатор чатов Telegram (на своём аккаунте)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -85,8 +108,12 @@ def main():
     p_apply.add_argument("--confirm-leave", action="store_true",
                           help="Разрешить выход из мёртвых групп/каналов (необратимо)")
 
+    p_undo = sub.add_parser("undo", help="Откатить последние действия archive/mute из undo_log")
+    p_undo.add_argument("--yes", action="store_true", help="Реально выполнить откат (без флага — только просмотр)")
+    p_undo.add_argument("--last", type=int, default=1, help="Сколько последних действий откатить")
+
     args = parser.parse_args()
-    handlers = {"collect": cmd_collect, "report": cmd_report, "apply": cmd_apply}
+    handlers = {"collect": cmd_collect, "report": cmd_report, "apply": cmd_apply, "undo": cmd_undo}
     asyncio.run(handlers[args.command](args))
 
 

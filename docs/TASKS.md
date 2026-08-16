@@ -30,10 +30,10 @@
 |---|---|---|---|---|---|
 | S2-01 | ~~Rate limiter: проактивная пауза + обработка `FloodWaitError`~~ — оба механизма уже в `ratelimit.py` (фиксированный `PACE_SECONDS=1.0` + реактивный `FloodWaitError`). Осталось: валидация реального темпа на песочном аккаунте, при необходимости — сделать паузу адаптивной вместо фиксированной (скилл `rate-limiter`) | 🏗️ Codex | `stage/rate-limiter` | — | Review |
 | S2-02 | Session vault: перенос хранения сессии из `.session`-файла в macOS Keychain (скилл `session-vault`) | 🏗️ Codex | `stage/session-vault` | — | Backlog |
-| S2-03 | Команда `undo`: читает `undo_log.jsonl`, восстанавливает состояние (скилл `human-in-the-loop`). **Плюс исправить порядок записи**: сейчас `actions.py._log_action()` вызывается ПОСЛЕ успешного вызова Telegram API — если процесс упадёт между вызовом API и записью в лог, действие останется без записи для отката. Нужно писать в undo_log ДО реального вызова (write-ahead, как в `docs/ARCHITECTURE.md` §4 и NFR «Надёжность» в `docs/PRD.md` §4) | 🏗️ Codex | `stage/undo` | — | Backlog |
+| S2-03 | Команда `undo`: реализован write-ahead append-only `undo_log.jsonl` для archive/unarchive/mute (`snapshot` до Telegram API, затем `applied`/`failed`), добавлена CLI-команда `undo` с dry-run по умолчанию и реальным откатом archive/mute по `--yes`. Папки пока не включены в automatic undo: нужен полный snapshot `DialogFilter` до `ensure_folder`. | 🏗️ Codex | `stage/undo-and-tests` | — | Review |
 | S2-04 | Валидация лимитов папок (10/100 без Premium, 20/200 с Premium) до apply | 🏗️ Codex | `stage/plan-validation` | — | Backlog |
 | S2-05 | Device fingerprint при авторизации | 🏗️ Codex | `stage/device-fingerprint` | — | Backlog |
-| S2-06 | pytest + fake Telethon client — тестовый каркас для S2-01..S2-05 | 🏗️ Codex | `stage/test-harness` | — | Backlog |
+| S2-06 | pytest + fake Telethon client — минимальный harness создан для S2-03 (`tests/test_undo_journal.py`: write-ahead archive/mute и undo archive без реального Telegram API). Расширить на S2-01/S2-02/S2-04/S2-05 отдельными тестами. | 🏗️ Codex | `stage/undo-and-tests` | — | In Progress |
 | S2-07 | Security-CI grep-проверки из `docs/SECURITY.md` §7 как pre-commit/CI шаг | 🏗️ Codex | `stage/security-ci` | — | Backlog |
 | S2-08 | Аудит S2-01–S2-05 перед PR: risk review, поиск багов | 🕵️ Aider | — (не коммитит) | — | Backlog |
 

@@ -24,6 +24,28 @@
 
 ---
 
+## [16.08.2026, S2-03 undo + minimal tests] От: Codex → Кому: CEO, Aider
+
+**Этап/задача:** S2-03 (write-ahead undo + CLI undo), частичный S2-06 (minimal fake-client pytest harness)
+
+**Что сделано:**
+- Создана ветка `stage/undo-and-tests`.
+- `actions.py` переведён на write-ahead append-only события для archive/unarchive/mute: `snapshot` пишется и fsync'ится до мутирующего Telegram API, затем пишется `applied` или `failed`.
+- Добавлена команда `python main.py undo`: без `--yes` показывает dry-run, с `--yes` откатывает последние archive/mute действия из `undo_log.jsonl`.
+- Добавлен `undo.py`: читает JSONL построчно, собирает события по `undo_id`, поддерживает snapshot-only записи после возможного crash во время API-запроса.
+- Добавлен минимальный pytest/fake-client harness `tests/test_undo_journal.py`; реальные Telegram API в тестах не вызываются.
+
+**Что важно знать перед продолжением:**
+- Automatic undo пока поддерживает archive/unarchive/mute. Папки намеренно не включены в эту итерацию: для корректного отката нужен полный snapshot старого `DialogFilter`, а не только список чатов.
+- `leave` получает write-ahead snapshot и `reversible=False` после успеха, но automatic undo для него не обещается: Telegram не гарантирует восстановление членства без invite/admin-права.
+- Dry-run `undo` не требует `.env` и не подключается к Telegram; реальные настройки нужны только для `undo --yes`.
+
+**Файлы затронуты:**
+- `actions.py`, `undo.py`, `main.py`, `tests/test_undo_journal.py`, `requirements.txt`, `README.md`, `docs/TASKS.md`, `docs/HANDOFF.md`
+
+**Открытые вопросы / решения нужны от CEO:**
+- Подтвердить, делать ли в следующем шаге folder undo через сериализацию полного `DialogFilter`, или сначала расширить test harness на rate limiter/session-vault/plan validation.
+
 ## [16.08.2026, аудит правок CEO + BYOK] От: Claude (ассистент CEO) → Кому: Codex, Gemini/Antigravity
 
 **Этап/задача:** CEO самостоятельно внёс архитектурный сдвиг (BYOK/LLM Provider Interface, ADR-0005) и перенёс реальный код Этапа 1 (`actions.py`, `ratelimit.py`, `tg_client.py`, `config.py`, `collector.py`, `classifier.py`, `main.py`, `report.py`, `categories.json`, `.env.example`, `.gitignore`) в эту папку. Ассистент прочитал все изменённые файлы и сам код (впервые — раньше был доступен только README с описанием кода, не сам код).
