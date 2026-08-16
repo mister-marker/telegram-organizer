@@ -29,7 +29,7 @@
 | ID | Задача | Кто | Ветка | Блокирует | Статус |
 |---|---|---|---|---|---|
 | S2-01 | ~~Rate limiter: проактивная пауза + обработка `FloodWaitError`~~ — оба механизма уже в `ratelimit.py` (фиксированный `PACE_SECONDS=1.0` + реактивный `FloodWaitError`). Осталось: валидация реального темпа на песочном аккаунте, при необходимости — сделать паузу адаптивной вместо фиксированной (скилл `rate-limiter`) | 🏗️ Codex | `stage/rate-limiter` | — | Review |
-| S2-02 | Session vault: перенос хранения сессии из `.session`-файла в macOS Keychain (скилл `session-vault`) | 🏗️ Codex | `stage/session-vault` | — | Backlog |
+| S2-02 | Session vault: Telethon переведён с файлового `.session` на `StringSession` + macOS Keychain через `keyring`; fallback backend запрещён fail-closed; добавлен `logout` для удаления Keychain-записи. Legacy `.session` не мигрируется автоматически, только предупреждение пользователю. | 🏗️ Codex | `stage/session-vault` | — | Review |
 | S2-03 | Команда `undo`: реализован write-ahead append-only `undo_log.jsonl` для archive/unarchive/mute (`snapshot` до Telegram API, затем `applied`/`failed`), добавлена CLI-команда `undo` с dry-run по умолчанию и реальным откатом archive/mute по `--yes`. Папки пока не включены в automatic undo: нужен полный snapshot `DialogFilter` до `ensure_folder`. | 🏗️ Codex | `stage/undo-and-tests` | — | Review |
 | S2-04 | Валидация лимитов папок (10/100 без Premium, 20/200 с Premium) до apply | 🏗️ Codex | `stage/plan-validation` | — | Backlog |
 | S2-05 | Device fingerprint при авторизации | 🏗️ Codex | `stage/device-fingerprint` | — | Backlog |

@@ -24,6 +24,29 @@
 
 ---
 
+## [16.08.2026, S2-02 session vault] От: Codex → Кому: CEO, Aider
+
+**Этап/задача:** S2-02 (Session Vault: macOS Keychain вместо `.session` файла)
+
+**Что сделано:**
+- Создана ветка `stage/session-vault`.
+- Добавлен `session_vault.py`: загрузка/сохранение/удаление Telethon `StringSession` через macOS Keychain (`keyring`).
+- `tg_client.py` больше не передаёт строковое имя файла в `TelegramClient`; вместо этого используется `StringSession` из Keychain, поэтому новый `tg_organizer.session` не должен создаваться.
+- `keyring` backend проверяется fail-closed: разрешён только `keyring.backends.macOS.Keyring`, fallback-хранилища запрещены.
+- Добавлена CLI-команда `python main.py logout`: завершает Telegram-сессию, если она активна, и удаляет запись из Keychain.
+- Добавлены unit-тесты `tests/test_session_vault.py` с fake Keychain backend без реального Telegram API.
+
+**Что важно знать перед продолжением:**
+- Legacy `.session` файл не мигрируется автоматически и не читается. Если он найден рядом с проектом, CLI печатает warning; после проверки входа через Keychain его нужно удалить вручную.
+- Реальный Keychain требует ручной проверки на песочном аккаунте: первый `collect` должен запросить login, сохранить запись в Keychain Access.app, повторный запуск должен пройти без нового login.
+- Docker-канал не покрыт этой задачей: для Linux-контейнера действует отдельное правило из `docs/SECURITY.md` §2a.
+
+**Файлы затронуты:**
+- `session_vault.py`, `tg_client.py`, `main.py`, `tests/test_session_vault.py`, `requirements.txt`, `README.md`, `docs/TASKS.md`, `docs/HANDOFF.md`
+
+**Открытые вопросы / решения нужны от CEO:**
+- После ручной проверки на песочном аккаунте подтвердить, что legacy `.session` можно удалить локально.
+
 ## [16.08.2026, S2-03 undo + minimal tests] От: Codex → Кому: CEO, Aider
 
 **Этап/задача:** S2-03 (write-ahead undo + CLI undo), частичный S2-06 (minimal fake-client pytest harness)
