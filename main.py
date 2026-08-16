@@ -10,18 +10,20 @@ CLI-точка входа.
                                                  (необратимо, см. README)
   python main.py undo                         — предпросмотр отката последнего действия
   python main.py undo --yes                   — реально откатить последнее действие
+  python main.py logout                       — завершить Telegram-сессию и удалить Keychain-запись
 """
 import argparse
 import asyncio
 import os
 
 from config import load_settings
-from tg_client import build_client, ensure_started
+from tg_client import build_client, ensure_started, legacy_session_path
 from collector import collect_dialogs, save_json, load_json
 from classifier import classify
 from report import build_plan, print_report
 import actions
 import undo
+from session_vault import delete_session
 
 DIALOGS_PATH = os.path.join("data", "dialogs.json")
 PLAN_PATH = os.path.join("data", "plan.json")
@@ -29,9 +31,10 @@ PLAN_PATH = os.path.join("data", "plan.json")
 
 async def cmd_collect(args):
     settings = load_settings()
+    warn_legacy_session_file(settings)
     client = build_client(settings)
     async with client:
-        await ensure_started(client)
+        await ensure_started(client, settings)
         print("Собираем список диалогов...")
         dialogs = await collect_dialogs(client, limit=args.limit)
         save_json(dialogs, DIALOGS_PATH)
@@ -52,6 +55,7 @@ async def cmd_report(args):
 async def cmd_apply(args):
     settings = load_settings()
     plan = load_json(PLAN_PATH)
+    warn_legacy_session_file(settings)
     client = build_client(settings)
 
     dry_run = not args.yes
@@ -59,7 +63,7 @@ async def cmd_apply(args):
         print("=== РЕЖИМ DRY-RUN: ничего не будет изменено, только предпросмотр ===\n")
 
     async with client:
-        await ensure_started(client)
+        await ensure_started(client, settings)
         for category, dialogs in plan.items():
             print(f"\n--- {category} ({len(dialogs)}) ---")
             if "неактивные" in category.lower():
@@ -88,10 +92,38 @@ async def cmd_undo(args):
         return
 
     settings = load_settings()
+    warn_legacy_session_file(settings)
     client = build_client(settings)
     async with client:
-        await ensure_started(client)
+        await ensure_started(client, settings)
         await undo.undo_records(client, records, dry_run=False)
+
+
+async def cmd_logout(args):
+    settings = load_settings()
+    warn_legacy_session_file(settings)
+    client = build_client(settings)
+
+    try:
+        async with client:
+            if await client.is_user_authorized():
+                await client.log_out()
+                print("[ok] Telegram-сессия завершена на стороне Telegram.")
+            else:
+                print("[ok] Активная Telegram-сессия не найдена.")
+    finally:
+        delete_session(settings)
+        print("[ok] Запись сессии удалена из macOS Keychain.")
+
+
+def warn_legacy_session_file(settings) -> None:
+    path = legacy_session_path(settings)
+    if os.path.exists(path):
+        print(
+            f"[warning] Найден legacy session-файл {path}. "
+            "Автоматической миграции нет: после проверки входа через Keychain "
+            "удалите этот файл вручную, чтобы секрет не оставался на диске."
+        )
 
 
 def main():
@@ -112,8 +144,16 @@ def main():
     p_undo.add_argument("--yes", action="store_true", help="Реально выполнить откат (без флага — только просмотр)")
     p_undo.add_argument("--last", type=int, default=1, help="Сколько последних действий откатить")
 
+    sub.add_parser("logout", help="Завершить Telegram-сессию и удалить запись из Keychain")
+
     args = parser.parse_args()
-    handlers = {"collect": cmd_collect, "report": cmd_report, "apply": cmd_apply, "undo": cmd_undo}
+    handlers = {
+        "collect": cmd_collect,
+        "report": cmd_report,
+        "apply": cmd_apply,
+        "undo": cmd_undo,
+        "logout": cmd_logout,
+    }
     asyncio.run(handlers[args.command](args))
 
 

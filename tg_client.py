@@ -19,26 +19,45 @@ open-source проекты в этой нише прямо предупрежд�
 нулевой — Telegram нигде явно не гарантирует безопасность такого использо-
 вания. Подробнее — в README, раздел "Безопасность".
 
-Файл сессии (.session) — это фактически ключ доступа к аккаунту, экви-
-валент активной сессии в Настройки -> Устройства. Храните его как пароль:
-не публикуйте, не коммитьте, не пересылайте.
+С Этапа 2 сессия больше не хранится в файле *.session. Вместо этого
+используется Telethon StringSession: клиент получает session-string из
+macOS Keychain, держит её в памяти во время работы, а после успешного
+логина сохраняет обновлённую строку обратно в Keychain.
 """
 from telethon import TelegramClient
 from config import Settings
+from session_vault import load_string_session, save_client_session
+
+
+def legacy_session_path(settings: Settings) -> str:
+    return f"{settings.session_name}.session"
 
 
 def build_client(settings: Settings) -> TelegramClient:
-    return TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
+    """
+    Собрать Telethon-клиент без файлового session storage.
+
+    Важная деталь Telethon: первый аргумент TelegramClient может быть не
+    именем файла, а объектом сессии. Когда мы передаём StringSession, Telethon
+    не создаёт `tg_organizer.session` рядом с кодом; он работает с сессией в
+    памяти, а постоянное хранение полностью контролирует session_vault.py.
+    """
+    return TelegramClient(load_string_session(settings), settings.api_id, settings.api_hash)
 
 
-async def ensure_started(client: TelegramClient) -> None:
+async def ensure_started(client: TelegramClient, settings: Settings) -> None:
     """
     При первом запуске Telethon интерактивно запросит номер телефона, код
     из Telegram и, если включена двухфакторная аутентификация, облачный
-    пароль — как обычный вход в новое приложение. Дальше сессия сохраняется
-    в файле *.session и повторный вход не требуется.
+    пароль — как обычный вход в новое приложение.
+
+    После успешного start() Telethon уже держит актуальную StringSession в
+    client.session. Мы сразу сохраняем её в Keychain. Это закрывает окно, где
+    пользователь вошёл в аккаунт, но безопасное постоянное хранилище ещё не
+    обновлено.
     """
     await client.start()
+    save_client_session(settings, client)
     me = await client.get_me()
     username = f"@{me.username}" if me.username else "без username"
-    print(f"[ok] Авторизованы как: {me.first_name} ({username})")
+    print(f"[ok] Авторизованы как: {me.first_name} ({username}); сессия сохранена в macOS Keychain")
