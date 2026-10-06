@@ -1,26 +1,59 @@
-# TG Organizer — Этап 1 (MVP) ✅, Этап 2 в работе
+# TG Organizer
 
-> Это README самого кода. Если вы агент (Codex/Antigravity/Aider) — сначала прочитайте `AGENTS.md` в корне репозитория, это конституция проекта и обязательная точка входа перед любой задачей. Онбординг-промпты для первой сессии — `docs/prompts/codex-start.md` и `docs/prompts/antigravity-start.md`. Продукт и требования — `docs/PRD.md`, архитектура и эволюция по этапам — `docs/ARCHITECTURE.md`, что и как запрещено — `docs/SECURITY.md`, текущая доска задач — `docs/TASKS.md`.
+A **local-first CLI that brings order to a personal Telegram account**: it collects dialog metadata, proposes a category structure, and applies archiving, muting and folder changes — with a mandatory dry-run before anything is touched.
 
-Юзербот на Telethon для наведения порядка в личном Telegram: сбор
-метаданных диалогов → предложенная структура категорий → применение
-(архивация / мьют / папки) с обязательным dry-run перед любым реальным
-изменением.
+> The official Bot API cannot do this. It has no access to your dialog list or folders — that boundary is built into Telegram itself, not a limitation of this project. The only technical path is an MTProto client authorised as a regular app, which is what Telethon provides.
 
-Это первый, сознательно ограниченный этап большого плана (веб-дашборд,
-БД, локальная AI-категоризация — см. «Дальше» внизу и `docs/TASKS.md`).
-Он полностью рабочий сам по себе и не требует ничего, кроме Python.
+---
 
-## Почему Telethon, а не обычный Bot API
+## Status
 
-Официальный Bot API в принципе не имеет доступа ни к вашему списку
-личных диалогов, ни к папкам — это разделение заложено в архитектуру
-самого Telegram, а не наше ограничение. Единственный технический путь —
-авторизовать MTProto-клиент под своим аккаунтом, как обычное приложение
-(Desktop/Android/iOS). Telethon делает именно это. Подробнее про constraint
-«API Telegram» — `docs/PRD.md` §5.
+| Stage | Scope | State |
+|---|---|---|
+| **1 — CLI core** | `collect` → `report` → `apply` → `undo` | ✅ Complete and working |
+| **2 — Hardening** | rate limiting, Keychain session vault, undo journal, folder-limit pre-validation, device fingerprint | 🚧 In progress |
+| **3 — Web dashboard** | FastAPI + React, drag-and-drop plan editing, WebSocket progress, database instead of flat JSON | 📋 Planned |
+| **4 — Semantic classification** | local LLM / embeddings (Ollama, LanceDB), opt-in cloud tagging | 📋 Planned |
+| **5 — Packaging** | Tauri DMG for macOS | 📋 Planned |
 
-## Установка
+Stage 1 is a complete, working tool on its own — it needs nothing but Python.
+Every stage is specified before it is built: requirements in [`docs/PRD.md`](docs/PRD.md), design in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/ADR/`](docs/ADR/).
+
+---
+
+## What it does today
+
+- Collects metadata for every dialog — type, unread count, last activity date, archived / pinned / muted flags — **without reading message contents**.
+- Classifies rule-based: keywords in the dialog title, plus dialog type and age (`DEAD_AFTER_DAYS`, default 180 days).
+- Builds a plan, prints it as a table, and writes `data/plan.json` so you can edit it by hand before applying anything.
+- Applies the plan: archive, mute, create and update folders.
+- Validates the plan against Telegram folder limits **before** connecting — 10 folders / 100 chats, or 20 / 200 with `TG_HAS_PREMIUM=true`. If the plan does not fit, the CLI stops before touching the network.
+- `undo` rolls back the last archive/mute from an append-only journal.
+
+---
+
+## Safety model
+
+This tool operates a personal account, so safety is a first-class feature rather than a checkbox:
+
+- **Dry-run is the default.** `apply` and `undo` only preview changes unless `--yes` is passed.
+- **Write-ahead undo journal.** `data/undo_log.jsonl` records a snapshot of the state *before* the API call, then the `applied` / `failed` event.
+- **Double-flag confirmation for irreversible actions.** Leaving groups and channels requires both `--yes` and `--confirm-leave`.
+- **Session stored in the macOS Keychain**, not in a `*.session` file. A Telethon `StringSession` is not encrypted by itself — the security comes from where that string lives.
+- **Two-layer rate limiting.** A fixed proactive pause between requests lowers the chance of hitting a limit; reactive `FloodWaitError` handling waits exactly as long as Telegram asks, never a guessed value.
+- **No message content is read.** Semantic classification would be a separate, explicit opt-in at Stage 4.
+
+---
+
+## Deliberately out of scope in v1
+
+- Reading message bodies — metadata only.
+- Irreversibly deleting anything by default.
+- Auto-leaving personal chats — archiving and muting only.
+
+---
+
+## Install
 
 ```bash
 python3 -m venv .venv
@@ -29,167 +62,81 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Откройте https://my.telegram.org → API development tools, создайте
-приложение, впишите `api_id` и `api_hash` в `.env`.
+Create an application at https://my.telegram.org → *API development tools*, then put `api_id` and `api_hash` into `.env`.
 
-## Быстрый старт
+---
+
+## Usage
 
 ```bash
-python main.py collect          # первый запуск спросит номер телефона, код, 2FA-пароль
-python main.py report           # покажет таблицу и сохранит data/plan.json
-python main.py apply            # ПРЕДПРОСМОТР — ничего не меняет
-python main.py apply --yes      # реально архивирует / мьютит / создаёт папки
-python main.py undo             # ПРЕДПРОСМОТР отката последнего archive/mute
-python main.py undo --yes       # реально откатить последнее archive/mute
-python main.py logout           # завершить сессию и удалить запись из Keychain
+python main.py collect      # first run asks for phone, code and 2FA password
+python main.py report       # prints the table, writes data/plan.json
+python main.py apply        # dry run — changes nothing
+python main.py apply --yes  # actually archives / mutes / creates folders
+python main.py undo         # dry run of the rollback
+python main.py undo --yes   # actually rolls back
+python main.py logout       # ends the session and removes it from the Keychain
 ```
 
-Перед `--yes` откройте `data/plan.json` и при желании поправьте вручную —
-переложите диалог в другую категорию, уберите что-то из списка и т.д.
+Open `data/plan.json` before `--yes` and adjust it by hand if needed. Categories are configured in `categories.json` — the starter set is meant to be edited for your own chat titles.
 
-Категории по ключевым словам настраиваются в `categories.json` — там уже
-есть стартовый набор по мотивам ваших текущих папок (Crypto, Elcore,
-Ocania Group и т.д.), его стоит доредактировать под реальные названия
-ваших чатов.
+---
 
-## Структура кода (Этап 1–2, до появления `backend/`)
+## Project structure
 
-Пока продукт — чистый CLI, весь код лежит плоско в корне репозитория.
-Перенос в `backend/app/...` произойдёт только на Этапе 3, когда появится
-FastAPI и, соответственно, `frontend-worktree/`, от которого backend
-физически отделяется (см. `AGENTS.md` §1) — переносить раньше времени
-не нужно.
+| File | Role |
+|---|---|
+| `main.py` | CLI entry point (`collect` / `report` / `apply` / `undo` / `logout`) |
+| `tg_client.py` | Telethon client initialised from a `StringSession` |
+| `session_vault.py` | stores the session string in the macOS Keychain |
+| `device_fingerprint.py` | Telegram Desktop / macOS client metadata for MTProto `initConnection` |
+| `plan_validation.py` | validates folder limits before a plan is applied |
+| `collector.py` | collects dialog metadata, never message contents |
+| `classifier.py` + `categories.json` | rule-based classification |
+| `actions.py` | archive / mute / folders; `leave_dialogs` behind a double flag |
+| `ratelimit.py` | proactive pause + `FloodWaitError` handling |
+| `report.py` | terminal table rendered with `rich` |
 
-| Файл | Роль | Требование |
-|---|---|---|
-| `main.py` | точка входа CLI (`collect`/`report`/`apply`) | — |
-| `tg_client.py` | инициализация Telethon-клиента через StringSession | FR-01/02 |
-| `session_vault.py` | хранение Telegram-сессии в macOS Keychain | FR-03/04 |
-| `device_fingerprint.py` | metadata клиента Telegram Desktop/macOS для MTProto initConnection | S2-05 |
-| `plan_validation.py` | предвалидация лимитов Telegram-папок до apply | FR-19 |
-| `collector.py` | сбор метаданных диалогов, без чтения содержимого | FR-05 |
-| `classifier.py` | rule-based классификация по ключевым словам + типу/возрасту | FR-08/09 |
-| `categories.json` | настраиваемые правила категорий | FR-09 |
-| `actions.py` | archive/mute/папки, `leave_dialogs` с double-flag | FR-11–13, FR-16 |
-| `ratelimit.py` | проактивная пауза + обработка `FloodWaitError` | FR-07 |
-| `report.py` | таблица через `rich` | FR-21 (CLI-вариант) |
-| `config.py` | `.env`, `DEAD_AFTER_DAYS` и т.п. | — |
+---
 
-## Что уже умеет
+## Documentation
 
-- Собирает метаданные всех диалогов (тип, непрочитанные, дата последней
-  активности, архив/пин/мьют) **без чтения содержимого сообщений**.
-- Классифицирует rule-based: по ключевым словам в названии + по типу и
-  «возрасту» диалога (`DEAD_AFTER_DAYS` в `.env`, по умолчанию 180 дней).
-- Строит план и печатает таблицу через `rich`.
-- Применяет план: архивация, мьют, создание/обновление папок. Перед любым
-  `apply` план валидируется против лимитов Telegram-папок: 10 папок / 100
-  чатов без Premium, 20 / 200 с `TG_HAS_PREMIUM=true`. Если план не
-  помещается, CLI останавливается до подключения к Telegram.
-- Для archive/unarchive/mute `data/undo_log.jsonl` пишется как
-  write-ahead append-only журнал: сначала snapshot состояния «до», затем
-  Telegram API, затем событие `applied`/`failed`. Команда `undo` читает
-  этот лог и автоматически откатывает archive/mute (`docs/TASKS.md`
-  S2-03). Откат папок требует полного snapshot `DialogFilter` и будет
-  расширен отдельно.
-- Защита от FloodWait в два слоя (см. `ratelimit.py`): (1) фиксированная
-  проактивная пауза между запросами (`PACE_SECONDS = 1.0`) — снижает
-  вероятность вообще упереться в лимит; (2) реактивная обработка
-  `FloodWaitError` — если лимит всё же превышен, Telegram сам присылает
-  точное число секунд ожидания, и код ждёт ровно столько, не наугад.
-  Оба механизма уже в коде; `docs/TASKS.md` S2-01 теперь про тюнинг
-  паузы под реальную нагрузку и валидацию на песочном аккаунте, не про
-  добавление проактивной паузы с нуля — см. скилл
-  `.agents/skills/rate-limiter/SKILL.md`.
-- `leave_dialogs` уже требует одновременно `--yes` и `--confirm-leave` —
-  это ровно паттерн double-flag confirmation, описанный в
-  `docs/SECURITY.md` §5, для будущих опасных действий использовать как
-  референс.
-- Telethon-клиент подключается с macOS/Desktop device fingerprint:
-  модель Mac и версия macOS определяются локально, `app_version` и языки
-  можно переопределить через `.env`. Это metadata MTProto initConnection,
-  а не способ обхода rate limiting или правил Telegram.
+The project is written down before it is built:
 
-## Что осознанно НЕ сделано в v1
+| Document | Content |
+|---|---|
+| [`docs/PRD.md`](docs/PRD.md) | product requirements, KPIs, constraints |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | architecture and how it evolves per stage |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | what is forbidden, and why |
+| [`docs/TASKS.md`](docs/TASKS.md) | live task board |
+| [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | API contract (draft until Stage 3) |
+| [`docs/ADR/`](docs/ADR/) | five accepted architecture decisions with rationale |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | full context handoff between working sessions |
+| [`.agents/skills/`](.agents/skills/) | five reusable agent skills: Telethon safety, session vault, rate limiter, human-in-the-loop, hybrid search |
 
-- **Не читает содержимое сообщений** — только метаданные. AI-классификация
-  по смыслу переписки — это Этап 4, отдельный явный опт-ин (FR-06, FR-24).
-- **Не удаляет ничего необратимо по умолчанию.** Выход из групп/каналов
-  (`leave_dialogs`) — единственное труднообратимое действие (обычно стирает
-  локальную историю чата) и требует одновременно `--yes` и
-  `--confirm-leave`.
-- Не трогает личные чаты автоматическим выходом — только архивация/мьют.
+---
 
-## Безопасность и риски (реально, а не для галочки)
+## Built with AI agents, under human control
 
-- **Сессия хранится в macOS Keychain.** Telethon работает через
-  `StringSession`: строка сессии живёт в памяти процесса и после успешного
-  логина сохраняется в системную связку ключей, а не в файл `*.session`.
-- Старый `.session`-файл, если он остался от раннего baseline, не
-  мигрируется автоматически. После проверки входа через Keychain удалите
-  legacy-файл вручную, чтобы секрет не оставался на диске.
-- Обычный `StringSession` в Telethon — это просто другой способ представить
-  ту же сессию (строка вместо файла), **сам по себе он не зашифрован**.
-  Безопасность даёт именно хранение этой строки в Keychain (FR-03,
-  `docs/TASKS.md` S2-02, скилл `.agents/skills/session-vault/SKILL.md`).
-  Если нужно хранить сессию вне Keychain (Docker-канал — см. ниже, или
-  Этап 3 веб-версия), шифрование поверх строки добавляется отдельно,
-  например через `cryptography.fernet` — правила для этого случая
-  зафиксированы в `docs/SECURITY.md` §2a.
-- **Автоматизация личного аккаунта через MTProto-библиотеки (Telethon,
-  Pyrogram, GramJS) — серая зона Terms of Service Telegram.** В самих
-  официальных документах Telegram нет отдельного пункта про «юзерботов»,
-  но практика и множество open-source проектов в этой нише прямо
-  предупреждают: аккаунт может быть ограничен или заблокирован, если
-  поведение похоже на спам, накрутку или массовую рассылку. Для сценария
-  «разложить свои же диалоги по папкам» риск существенно ниже, чем для
-  массовых действий с чужими аккаунтами, но он не нулевой — гарантий
-  Telegram не даёт. Рекомендации:
-  - по возможности обкатайте инструмент сначала на некритичном аккаунте
-    (в этом проекте — правило CEO, разработка и тесты только на песочном
-    аккаунте, см. `AGENTS.md` §2);
-  - не используйте этот код для действий с чужими данными (сбор чужих
-    контактов, рассылки и т.п.) — это уже совсем другой профиль риска;
-  - не отключайте паузы в `ratelimit.py`.
-- Согласно [Terms of Service for Telegram Stars](https://telegram.org/tos/stars),
-  звёзды — это платёжный инструмент для цифровых товаров/услуг ботов и
-  мини-приложений (донаты, подписки, платные сообщения и т.д.), они не
-  обналичиваются обычным пользователем и не возвращаются автоматически —
-  это релевантно, только если на Этапе 7+ вы захотите монетизировать сам
-  инструмент через Stars, а не для его текущей работы.
+Development runs with coding agents (Codex, Antigravity, Aider) against a strict context file.
+[`AGENTS.md`](AGENTS.md) is the project constitution and a mandatory entry point before any task,
+with onboarding prompts in [`docs/prompts/`](docs/prompts/). Architecture decisions, security rules
+and scope are owned by me — the agents write and refactor code inside those constraints.
 
-## Дальше (см. `docs/TASKS.md` для актуального статуса каждой задачи)
+That is how the project keeps a full PRD / ADR / security trail while still moving fast.
 
-- **Этап 2 (в работе).** Rate limiting — тюнинг фиксированной паузы и
-  валидация на песочном аккаунте, проактивный+реактивный слой уже в коде
-  (S2-01), сессия в Keychain (S2-02), команда `undo`, читающая
-  `undo_log.jsonl` автоматически (S2-03 — заодно перенести запись в
-  undo_log на момент ДО вызова Telegram API, сейчас пишется после
-  успешного вызова, это расходится с write-ahead из
-  `docs/ARCHITECTURE.md` §4; для папок откат сложнее — нужно хранить
-  полное состояние фильтра «до»), предвалидация лимитов папок (S2-04),
-  device fingerprint (S2-05), test harness с fake Telethon client
-  (S2-06), security-CI grep-проверки (S2-07). Плюс параллельно —
-  Dockerfile как второй канал дистрибуции для друзей-разработчиков
-  (BL-06).
-- **Этап 3.** Веб-дашборд (FastAPI + React) поверх этого же ядра:
-  drag-and-drop правки плана, прогресс через WebSocket, БД для истории
-  вместо плоских JSON-файлов. Код переезжает в `backend/`, появляется
-  `frontend-worktree/` и `docs/API_CONTRACT.md` становится обязательным
-  к соблюдению (сейчас `STATUS: DRAFT`).
-- **Этап 4.** `classifier.ai_classify()` — классификация по смыслу
-  (локальная LLM/embeddings через Ollama, LanceDB, opt-in облачное
-  тегирование через Token Router), гибридный поиск по Saved Messages.
-- **Этап 5.** Упаковка в Tauri (DMG для macOS) как основной канал для
-  конечных пользователей.
+---
 
-## Источники, на которые опирается код и этот README
+## Stack
 
-- https://my.telegram.org — получение api_id/api_hash
-- https://core.telegram.org/api — официальная документация MTProto API
-- https://telegram.org/tos/stars — Terms of Service for Telegram Stars
-- Схема `DialogFilter`/`TextWithEntities` проверена напрямую в установленной
-  версии Telethon (`pip show telethon`), а не по памяти — см. комментарии
-  в `actions.py`.
-- `AGENTS.md`, `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` —
-  контекст и требования, из которых выведены пункты выше.
+Python 3 · Telethon (MTProto) · `keyring` (macOS Keychain) · `rich` · `python-dotenv` · pytest
+
+## Tests
+
+```bash
+pytest -q
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

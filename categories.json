@@ -1,15 +1,15 @@
 {
-  "_comment": "Отредактируйте под себя. Ключ — название итоговой папки/категории, значение — список подстрок, которые ищутся в названии диалога (без учёта регистра). Ниже — стартовый набор по мотивам ваших текущих папок из скриншота.",
+  "_comment": "Edit this for yourself. Key — the target folder/category name, value — a list of substrings searched in the dialog title (case-insensitive). This is only a starter set: replace the values with the chat titles you actually have.",
   "keyword_map": {
-    "Код / Разработка": ["код", "dev", "github", "python", "code"],
-    "Спорт": ["sport", "foosball", "футбол", "спорт"],
-    "MarketingOne": ["marketingone"],
-    "Ocania Group": ["ocania"],
-    "Elcore": ["elcore"],
-    "Crypto": ["crypto", "крипто"],
-    "Найм": ["найм", "hr", "hiring", "вакансия"],
-    "Почитать": ["почитать", "read later"],
-    "Полезное": ["useful", "полезн"],
-    "Аутсорс": ["аутсорс", "outsource"]
+    "Dev / Code": ["dev", "github", "python", "code", "код"],
+    "Work": ["work", "team", "office", "работа"],
+    "Clients": ["client", "customer", "project", "заказчик", "клиент"],
+    "Finance": ["bank", "invoice", "payment", "финанс", "банк"],
+    "Study": ["course", "study", "learn", "курс", "учёб"],
+    "Sport": ["sport", "football", "gym", "спорт"],
+    "Read later": ["read later", "почитать", "later"],
+    "Useful": ["useful", "полезн"],
+    "Hiring": ["hiring", "hr", "vacancy", "найм", "вакансия"],
+    "Outsource": ["outsource", "аутсорс"]
   }
 }

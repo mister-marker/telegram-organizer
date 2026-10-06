@@ -1,8 +1,34 @@
+# --- Secrets and local state -------------------------------------------------
 .env
+.env.*
+!.env.example
 *.session
 *.session-journal
 data/
+
+# --- Python ------------------------------------------------------------------
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ----------------------------------------------------
 .venv/
 venv/
+
+# --- Local notes (kept on disk, not published) -------------------------------
+README_FOR_github.md
+
+# --- AI coding agents (local working files) ----------------------------------
+# .aider.conf.yml is tracked on purpose: it documents the workflow.
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache*/
+.aider.tags.cache.v4/
+
+# --- macOS -------------------------------------------------------------------
+.DS_Store
